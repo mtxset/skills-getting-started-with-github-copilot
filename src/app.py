@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 import os
 from pathlib import Path
+from fuzzywuzzy import process  # Add this import for fuzzy matching
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
@@ -105,3 +106,34 @@ def signup_for_activity(activity_name: str, email: str):
     # Add student
     activity["participants"].append(email)
     return {"message": f"Signed up {email} for {activity_name}"}
+
+
+@app.post("/activities/{activity_name}/remove")
+def remove_participant(activity_name: str, email: str):
+    """Remove a participant from an activity"""
+    # Validate activity exists
+    if activity_name not in activities:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    
+    # Validate student is signed up
+    if email not in activities[activity_name]["participants"]:
+        raise HTTPException(status_code=400, detail="Student not signed up for this activity")
+
+    # Remove student
+    activities[activity_name]["participants"].remove(email)
+    return {"message": f"Removed {email} from {activity_name}"}
+
+
+@app.get("/search/activities")
+def search_activities(query: str):
+    """Search for activities by name using fuzzy matching"""
+    results = process.extract(query, activities.keys(), limit=5)
+    return [{"activity_name": name, "score": score} for name, score in results]
+
+
+@app.get("/search/participants")
+def search_participants(query: str):
+    """Search for participants across all activities using fuzzy matching"""
+    participants = {email for activity in activities.values() for email in activity["participants"]}
+    results = process.extract(query, participants, limit=5)
+    return [{"email": email, "score": score} for email, score in results]
